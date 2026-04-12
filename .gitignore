@@ -70,3 +70,6 @@ tests/.env
 tests/integration/drivers/artifacts/
 tests/integration/drivers/
 __pycache__/
+
+# AI related files
+AGENTS.md

@@ -1,4 +1,10 @@
 <p align="center">
+  <a href="https://github.com/Maxteabag/sqlit">
+    <img src="https://img.shields.io/badge/Fork%20of-Maxteabag%2Fsqlit-orange?style=for-the-badge&logo=github" alt="Fork of Maxteabag/sqlit">
+  </a>
+</p>
+
+<p align="center">
   <img src="assets/favorites/logo_sqlit.png" alt="sqlit logo" width="180">
 </p>
 
@@ -15,12 +21,16 @@
 </p>
 
 <p align="center">
-  <code>pipx install sqlit-tui</code>
+  <a href="https://www.buymeacoffee.com/PeterAdams"><img src="https://img.shields.io/badge/Buy%20the%20original%20author%20a%20coffee-ffdd00?style=flat&logo=buy-me-a-coffee&logoColor=black" alt="Buy the original author a Coffee"></a>
 </p>
 
-<p align="center">
-  <a href="https://www.buymeacoffee.com/PeterAdams"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=flat&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"></a>
-</p>
+---
+
+## Fork Changes
+
+Changes made in this fork relative to the [upstream repository](https://github.com/Maxteabag/sqlit):
+
+<!-- Add changes below as they are made -->
 
 ---
 
@@ -99,6 +109,18 @@ sqlit is for the developer who just wants to query their database with a user fr
 ---
 
 ## Installation
+
+### This fork
+
+Clone the repo and run directly with `uv`:
+
+```bash
+git clone https://github.com/hexycat/sqlit.git
+cd sqlit
+uv run sqlit
+```
+
+### Original upstream (`sqlit-tui` on PyPI)
 
 ```bash
 # pipx (recommended)
