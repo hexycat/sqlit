@@ -372,7 +372,7 @@ def main() -> int:
     parser.add_argument(
         "--settings",
         metavar="PATH",
-        help="Path to settings JSON file (overrides ~/.sqlit/settings.json)",
+        help="Path to settings JSON file (overrides the one in the sqlit config directory)",
     )
     parser.add_argument(
         "--theme",
@@ -511,6 +511,8 @@ def main() -> int:
             description=f"{schema.display_name} connection options",
         )
         add_schema_arguments(provider_parser, schema, include_name=True, name_required=True)
+        provider_parser.add_argument("--password-command", dest="password_command", help="Shell command to retrieve the database password")
+        provider_parser.add_argument("--ssh-password-command", dest="ssh_password_command", help="Shell command to retrieve the SSH password")
 
     edit_parser = conn_subparsers.add_parser("edit", help="Edit an existing connection")
     edit_parser.add_argument("connection_name", help="Name of connection to edit")
@@ -528,6 +530,8 @@ def main() -> int:
         help="Authentication type (SQL Server only)",
     )
     edit_parser.add_argument("--file-path", help="Database file path (SQLite only)")
+    edit_parser.add_argument("--password-command", dest="password_command", help="Shell command to retrieve the database password")
+    edit_parser.add_argument("--ssh-password-command", dest="ssh_password_command", help="Shell command to retrieve the SSH password")
 
     delete_parser = conn_subparsers.add_parser("delete", help="Delete a connection")
     delete_parser.add_argument("connection_name", help="Name of connection to delete")
@@ -542,6 +546,8 @@ def main() -> int:
             description=f"{schema.display_name} connection options",
         )
         add_schema_arguments(provider_parser, schema, include_name=True, name_required=False)
+        provider_parser.add_argument("--password-command", dest="password_command", help="Shell command to retrieve the database password")
+        provider_parser.add_argument("--ssh-password-command", dest="ssh_password_command", help="Shell command to retrieve the SSH password")
 
     query_parser = subparsers.add_parser("query", help="Execute a SQL query")
     query_parser.add_argument("--connection", "-c", required=True, help="Connection name to use")
