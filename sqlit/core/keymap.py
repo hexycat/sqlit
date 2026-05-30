@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
 
 from sqlit.shared.core.debug_events import emit_debug_event
@@ -196,10 +197,16 @@ class DefaultKeymapProvider(KeymapProvider):
             # Actions
             LeaderCommandDef("z", "cancel_operation", "Cancel", "Actions", guard="query_executing"),
             LeaderCommandDef("t", "change_theme", "Change Theme", "Actions"),
+            LeaderCommandDef(
+                "o",
+                "edit_query_in_editor",
+                "Open in editor",
+                "Actions",
+            ),
             LeaderCommandDef("h", "show_help", "Help", "Actions"),
+            LeaderCommandDef("k", "show_keybinding_editor", "Edit Keybindings", "Actions"),
             LeaderCommandDef("space", "telescope", "Telescope", "Actions"),
             LeaderCommandDef("slash", "telescope_filter", "Telescope Search", "Actions"),
-            LeaderCommandDef("q", "quit", "Quit", "Actions"),
             # Delete menu (vim-style)
             LeaderCommandDef("d", "line", "Delete line", "Delete", menu="delete"),
             LeaderCommandDef("w", "word", "Delete word", "Delete", menu="delete"),
@@ -288,10 +295,34 @@ class DefaultKeymapProvider(KeymapProvider):
             LeaderCommandDef("c", "cell", "Copy cell", "Copy", menu="ry"),
             LeaderCommandDef("y", "row", "Copy row", "Copy", menu="ry"),
             LeaderCommandDef("a", "all", "Copy all", "Copy", menu="ry"),
+            LeaderCommandDef("o", "columns", "Copy columns...", "Copy", menu="ry"),
+            LeaderCommandDef("f", "format", "Copy as...", "Copy", menu="ry"),
             LeaderCommandDef("e", "export", "Export...", "Export", menu="ry"),
             # rye results export menu
             LeaderCommandDef("c", "csv", "Export as CSV", "Export", menu="rye"),
             LeaderCommandDef("j", "json", "Export as JSON", "Export", menu="rye"),
+            LeaderCommandDef("m", "markdown", "Export as Markdown", "Export", menu="rye"),
+            LeaderCommandDef("o", "columns", "Columns...", "Export", menu="rye"),
+            # ryf copy-as format picker
+            LeaderCommandDef("m", "markdown", "Copy as Markdown...", "Copy as", menu="ryf"),
+            LeaderCommandDef("j", "json", "Copy as JSON...", "Copy as", menu="ryf"),
+            LeaderCommandDef("c", "csv", "Copy as CSV...", "Copy as", menu="ryf"),
+            LeaderCommandDef("v", "values", "Copy column values", "Copy as", menu="ryf"),
+            # ryfm markdown scope
+            LeaderCommandDef("c", "cell", "Cell as Markdown", "Copy as", menu="ryfm"),
+            LeaderCommandDef("y", "row", "Row as Markdown", "Copy as", menu="ryfm"),
+            LeaderCommandDef("a", "all", "All as Markdown", "Copy as", menu="ryfm"),
+            LeaderCommandDef("o", "columns", "Columns as Markdown...", "Copy as", menu="ryfm"),
+            # ryfj json scope
+            LeaderCommandDef("c", "cell", "Cell as JSON", "Copy as", menu="ryfj"),
+            LeaderCommandDef("y", "row", "Row as JSON", "Copy as", menu="ryfj"),
+            LeaderCommandDef("a", "all", "All as JSON", "Copy as", menu="ryfj"),
+            LeaderCommandDef("o", "columns", "Columns as JSON...", "Copy as", menu="ryfj"),
+            # ryfc csv scope
+            LeaderCommandDef("c", "cell", "Cell as CSV", "Copy as", menu="ryfc"),
+            LeaderCommandDef("y", "row", "Row as CSV", "Copy as", menu="ryfc"),
+            LeaderCommandDef("a", "all", "All as CSV", "Copy as", menu="ryfc"),
+            LeaderCommandDef("o", "columns", "Columns as CSV...", "Copy as", menu="ryfc"),
             # rg results g motion menu (vim-style gg)
             LeaderCommandDef("g", "first_row", "Go to first row", "Go to", menu="rg"),
             # vy value view yank menu (tree mode)
@@ -330,9 +361,15 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("enter", "tree_filter_accept", "tree_filter"),
             # Global
             ActionKeyDef("space", "leader_key", "global", priority=True),
-            ActionKeyDef("ctrl+q", "quit", "global"),
+            # quit is intentionally not in the user-overridable keymap;
+            # it lives only as Textual's built-in App.BINDINGS (ctrl+q) and
+            # the `:q` command. Keeping it un-rebindable avoids the footgun
+            # of a user accidentally locking themselves out of the exit key.
             ActionKeyDef("escape", "cancel_operation", "global"),
             ActionKeyDef("question_mark", "show_help", "global"),
+            ActionKeyDef("colon", "enter_command_mode", "global"),
+            ActionKeyDef("shift+semicolon", "enter_command_mode", "global", primary=False),
+            ActionKeyDef(":", "enter_command_mode", "global", primary=False),
             # Query (normal mode)
             ActionKeyDef("i", "enter_insert_mode", "query_normal"),
             ActionKeyDef("I", "prepend_insert_mode", "query_normal"),
@@ -359,6 +396,11 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("W", "cursor_WORD_forward", "query_normal"),
             ActionKeyDef("b", "cursor_word_back", "query_normal"),
             ActionKeyDef("B", "cursor_WORD_back", "query_normal"),
+            # Unbound by default — users can bind in their keymap.json
+            # (typically "e"/"E"), but they must also rebind whatever
+            # `focus_explorer` action is currently using those keys.
+            ActionKeyDef("", "cursor_word_end", "query_normal"),
+            ActionKeyDef("", "cursor_WORD_end", "query_normal"),
             ActionKeyDef("0", "cursor_line_start", "query_normal"),
             ActionKeyDef("circumflex_accent", "cursor_first_non_blank", "query_normal"),
             ActionKeyDef("dollar_sign", "cursor_line_end", "query_normal"),
@@ -422,14 +464,19 @@ class DefaultKeymapProvider(KeymapProvider):
             # Query (insert mode)
             ActionKeyDef("escape", "exit_insert_mode", "query_insert"),
             ActionKeyDef("ctrl+enter", "execute_query_insert", "query_insert"),
-            ActionKeyDef("tab", "autocomplete_accept", "query_insert"),
+            # autocomplete_accept lives in the 'autocomplete' context below;
+            # the query_insert context still acquires it implicitly when the
+            # dropdown is visible.
             # Navigation
             ActionKeyDef("e", "focus_explorer", "navigation"),
             ActionKeyDef("q", "focus_query", "navigation"),
             ActionKeyDef("r", "focus_results", "navigation"),
             # Query (autocomplete)
             ActionKeyDef("ctrl+j", "autocomplete_next", "autocomplete"),
+            ActionKeyDef("down", "autocomplete_next", "autocomplete", primary=False),
             ActionKeyDef("ctrl+k", "autocomplete_prev", "autocomplete"),
+            ActionKeyDef("up", "autocomplete_prev", "autocomplete", primary=False),
+            ActionKeyDef("tab", "autocomplete_accept", "autocomplete"),
             ActionKeyDef("escape", "autocomplete_close", "autocomplete"),
             # Clipboard (only in insert mode for vim consistency)
             ActionKeyDef("ctrl+a", "select_all", "query_insert"),
@@ -469,6 +516,13 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("t", "toggle_value_view_mode", "value_view"),
             ActionKeyDef("z", "collapse_all_json_nodes", "value_view"),
             ActionKeyDef("Z", "expand_all_json_nodes", "value_view"),
+            # Error dialog (screen-local — action methods live on ErrorScreen,
+            # not the App; the validator skips this context for that reason)
+            ActionKeyDef("y", "error_copy_message", "error_dialog"),
+            # Connection editor (screen-local, same as above)
+            ActionKeyDef("ctrl+s", "connection_save", "connection_editor"),
+            ActionKeyDef("ctrl+t", "connection_test", "connection_editor"),
+            ActionKeyDef("ctrl+d", "connection_install_driver", "connection_editor"),
         ]
 
 
@@ -547,3 +601,18 @@ def emit_keybinding_snapshot(provider: KeymapProvider | None = None) -> None:
             keymap._action_emitted = True  # type: ignore[attr-defined]
         except Exception:
             pass
+
+
+def build_textual_keymap(provider: KeymapProvider) -> dict[str, str]:
+    """Build a Textual-compatible keymap dict from a KeymapProvider.
+
+    Groups action keys by action name (across contexts) and joins the keys
+    with commas — Textual's set_keymap accepts comma-separated key lists.
+    Use the result with ``App.set_keymap(...)`` so that Bindings with
+    matching ``id=`` get their keys overridden at runtime.
+    """
+    by_action: dict[str, list[str]] = defaultdict(list)
+    for ak in provider.get_action_keys():
+        if ak.key not in by_action[ak.action]:
+            by_action[ak.action].append(ak.key)
+    return {action: ",".join(keys) for action, keys in by_action.items()}

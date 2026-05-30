@@ -106,11 +106,17 @@ class UILeaderMixin:
     def action_leader_change_theme(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("change_theme")
 
+    def action_leader_edit_query_in_editor(self: UINavigationMixinHost) -> None:
+        self._execute_leader_command("edit_query_in_editor")
+
     def action_leader_toggle_process_worker(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("toggle_process_worker")
 
     def action_leader_show_help(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("show_help")
+
+    def action_leader_show_keybinding_editor(self: UINavigationMixinHost) -> None:
+        self._execute_leader_command("show_keybinding_editor")
 
     def action_leader_telescope(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("telescope")

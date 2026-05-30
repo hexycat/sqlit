@@ -97,6 +97,15 @@ class State(ABC):
     """Base class for hierarchical states."""
 
     help_category: str | None = None
+    # Name this state uses in keymap defaults / user config (e.g. the
+    # ``context`` field of :class:`~sqlit.core.keymap.ActionKeyDef`). Used
+    # by the keymap-manager's conflict detector to derive ancestor chains
+    # from this state's :attr:`parent` link — so binding the same key in
+    # a descendant context to a *different* action than an ancestor's
+    # binding is caught before it lands on disk. ``None`` means the
+    # state has no corresponding keymap context (intermediate/composite
+    # states like ``QueryFocusedState`` and the modal-only screens).
+    keymap_context: str | None = None
 
     def __init__(self, parent: State | None = None):
         self.parent = parent
@@ -130,7 +139,10 @@ class State(ABC):
             help_key=help_key or key,
             help_description=help,
         )
-        if key and label:
+        # A label means the author wants this in the footer. The display
+        # key can be omitted here and resolved at render time via the
+        # global keymap (see ActionSpec.get_display_binding).
+        if label:
             if right:
                 self._right_bindings.append(action_name)
             else:

@@ -11,6 +11,7 @@ class QueryNormalModeState(State):
     """Query editor in NORMAL mode."""
 
     help_category = "Query Editor (Normal)"
+    keymap_context = "query_normal"
 
     def _setup_actions(self) -> None:
         self.allows("enter_insert_mode", label="Insert Mode", help="Enter INSERT mode")
@@ -22,6 +23,10 @@ class QueryNormalModeState(State):
         self.allows("g_leader_key", label="Go", help="Go motions (menu)")
         self.allows("new_query", label="New", help="New query (clear all)")
         self.allows("show_history", label="History", help="Query history")
+        self.allows(
+            "edit_query_in_editor",
+            help="Open current query in your terminal editor",
+        )
         # Vim cursor movement
         self.allows("cursor_left", help="Move cursor left")
         self.allows("cursor_right", help="Move cursor right")
@@ -31,6 +36,8 @@ class QueryNormalModeState(State):
         self.allows("cursor_WORD_forward", help="Move to next WORD")
         self.allows("cursor_word_back", help="Move to previous word")
         self.allows("cursor_WORD_back", help="Move to previous WORD")
+        self.allows("cursor_word_end", help="Move to end of word")
+        self.allows("cursor_WORD_end", help="Move to end of WORD")
         self.allows("cursor_first_non_blank", help="Move to first non-blank")
         self.allows("cursor_line_start", help="Move to line start")
         self.allows("cursor_line_end", help="Move to line end")

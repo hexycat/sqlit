@@ -6,9 +6,10 @@ from typing import TYPE_CHECKING, cast
 
 from rich.segment import Segment
 from textual.color import Color
-from textual.events import Key
+from textual.events import Key, Paste
 from textual.strip import Strip
 from textual.widgets import TextArea
+from textual.widgets.text_area import Selection
 
 if TYPE_CHECKING:
     from sqlit.shared.ui.protocols import AutocompleteProtocol
@@ -117,7 +118,7 @@ class QueryTextArea(TextArea):
         self._sync_terminal_cursor()
 
     @property
-    def _draw_cursor(self) -> bool:  # type: ignore[override]
+    def _draw_cursor(self) -> bool:
         if self._should_use_terminal_cursor():
             return False
         return super()._draw_cursor
@@ -130,33 +131,45 @@ class QueryTextArea(TextArea):
         """Intercept clipboard, undo/redo, and Enter keys."""
         normalized_key = self._normalize_key(event.key)
 
+        from sqlit.core.keymap import get_keymap
+        keymap = get_keymap()
+        select_all_keys = keymap.keys_for_action("select_all")
+        copy_keys = keymap.keys_for_action("copy_selection")
+        # `paste` is bound in both query_normal (vim "p") and query_insert
+        # (ctrl+v). Restrict to the modifier-style keys for this handler so
+        # plain "p" in normal mode still reaches the vim operator.
+        paste_keys = [
+            k for k in keymap.keys_for_action("paste")
+            if "+" in k or len(k) > 1
+        ]
+        undo_keys = keymap.keys_for_action("undo")
+        redo_keys = keymap.keys_for_action("redo")
+
+        clipboard_keys = set(select_all_keys + copy_keys + paste_keys)
+
         # Clipboard shortcuts only work in INSERT mode (vim consistency)
-        if normalized_key in ("ctrl+a", "ctrl+c", "ctrl+v"):
+        if normalized_key in clipboard_keys:
             if not self._is_insert_mode():
                 # Block these in normal mode - use vim commands instead
                 event.prevent_default()
                 event.stop()
                 return
 
-            # Handle CTRL+A (select all) - override Emacs beginning-of-line
-            if normalized_key == "ctrl+a":
+            if normalized_key in select_all_keys:
                 if hasattr(self.app, "action_select_all"):
                     self.app.action_select_all()
                 event.prevent_default()
                 event.stop()
                 return
 
-            # Handle CTRL+C (copy) - override default behavior
-            if normalized_key == "ctrl+c":
+            if normalized_key in copy_keys:
                 if hasattr(self.app, "action_copy_selection"):
                     self.app.action_copy_selection()
                 event.prevent_default()
                 event.stop()
                 return
 
-            # Handle CTRL+V (paste) - override default behavior
-            if normalized_key == "ctrl+v":
-                # Push undo state before paste
+            if normalized_key in paste_keys:
                 self._push_undo_if_changed()
                 if hasattr(self.app, "action_paste"):
                     self.app.action_paste()
@@ -165,16 +178,14 @@ class QueryTextArea(TextArea):
                 return
 
         # Undo/redo work in both modes
-        # Handle CTRL+Z (undo)
-        if normalized_key == "ctrl+z":
+        if normalized_key in undo_keys and "+" in normalized_key:
             if hasattr(self.app, "action_undo"):
                 self.app.action_undo()
             event.prevent_default()
             event.stop()
             return
 
-        # Handle CTRL+Y (redo)
-        if normalized_key == "ctrl+y":
+        if normalized_key in redo_keys and "+" in normalized_key:
             if hasattr(self.app, "action_redo"):
                 self.app.action_redo()
             event.prevent_default()
@@ -199,6 +210,23 @@ class QueryTextArea(TextArea):
 
         # For all other keys, use default TextArea behavior
         await super()._on_key(event)
+
+    async def _on_paste(self, event: Paste) -> None:
+        """Handle terminal-delivered paste text explicitly."""
+        if not self._is_insert_mode():
+            event.prevent_default()
+            event.stop()
+            return
+
+        self._push_undo_if_changed()
+        paste_text = getattr(self.app, "_paste_text", None)
+        if callable(paste_text):
+            paste_text(event.text)
+            event.prevent_default()
+            event.stop()
+            return
+
+        await super()._on_paste(event)
 
     def _is_visual_mode(self) -> bool:
         """Check if app is in any vim visual mode."""
@@ -266,9 +294,9 @@ class QueryTextArea(TextArea):
             self._line_cache.clear()
             self.refresh()
 
-    def _watch_selection(self, previous_selection: object, selection: object) -> None:
+    def _watch_selection(self, previous_selection: Selection, selection: Selection) -> None:
         """Clear line cache when cursor row changes (for relative line numbers)."""
-        super()._watch_selection(previous_selection, selection)  # type: ignore[arg-type]
+        super()._watch_selection(previous_selection, selection)
         if self._relative_line_numbers and self.show_line_numbers:
             # Get current cursor row
             cursor_row = self.selection.end[0]

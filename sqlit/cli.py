@@ -37,6 +37,64 @@ def _get_schema_value_flags() -> set[str]:
     return flags
 
 
+def _looks_like_project_path(arg: str) -> bool:
+    """Conservative test for a positional project-dir argument.
+
+    Only matches things that are obviously paths: `.`, `..`, anything
+    starting with `./`, `../`, `/`, `~`, or anything ending in `/`.
+    """
+    if arg in {".", ".."}:
+        return True
+    if arg.startswith(("./", "../", "/", "~")):
+        return True
+    if arg.endswith("/"):
+        return True
+    return False
+
+
+def _extract_project_dir(argv: list[str]) -> tuple[Path | None, list[str]]:
+    """Extract a positional project-dir argument from argv if present.
+
+    Returns (project_dir, remaining_argv). Exits with an error if the
+    user passed a path that doesn't resolve to an existing directory.
+    """
+    subcommands = {"connections", "connection", "connect", "query", "docker", "alerts"}
+    result_argv: list[str] = []
+    project_dir: Path | None = None
+
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if i == 0:
+            result_argv.append(arg)
+            i += 1
+            continue
+        # Flags pass straight through (let argparse handle them).
+        if arg.startswith("-"):
+            result_argv.append(arg)
+            i += 1
+            continue
+        # First subcommand: copy the rest verbatim.
+        if arg in subcommands:
+            result_argv.extend(argv[i:])
+            break
+        if project_dir is None and _looks_like_project_path(arg):
+            resolved = Path(arg).expanduser().resolve()
+            if not resolved.is_dir():
+                print(
+                    f"Error: project directory does not exist: {arg}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            project_dir = resolved
+            i += 1
+            continue
+        result_argv.append(arg)
+        i += 1
+
+    return project_dir, result_argv
+
+
 def _extract_connection_url(argv: list[str]) -> tuple[str | None, list[str]]:
     """Extract a connection URL from argv if present.
 
@@ -183,6 +241,69 @@ def _parse_float_value(value: str | None, default: float) -> float:
         return default
 
 
+def _add_stdin_secret_flags(parser: argparse.ArgumentParser, *, include_ssh: bool) -> None:
+    """Attach --password-stdin (and optionally --ssh-password-stdin) to a parser."""
+    parser.add_argument(
+        "--password-stdin",
+        dest="password_stdin",
+        action="store_true",
+        help="Read the password from stdin (one line, trailing newline stripped)",
+    )
+    if include_ssh:
+        parser.add_argument(
+            "--ssh-password-stdin",
+            dest="ssh_password_stdin",
+            action="store_true",
+            help="Read the SSH password from stdin (one line, trailing newline stripped)",
+        )
+
+
+def _resolve_stdin_secrets(args: argparse.Namespace) -> None:
+    """Populate args.password / args.url / args.ssh_password from stdin if requested.
+
+    Recognised stdin-trigger attrs: ``password_stdin``, ``url_stdin``,
+    ``ssh_password_stdin``. At most one may be set per invocation — stdin
+    is a single stream and we read one line from it. The corresponding
+    cleartext flag must not also be set.
+    """
+    from sqlit.domains.connections.domain.stdin_secret import (
+        StdinSecretError,
+        read_secret_from_stdin,
+    )
+
+    requests: list[tuple[str, str]] = []
+    if getattr(args, "password_stdin", False):
+        requests.append(("password", "password"))
+    if getattr(args, "url_stdin", False):
+        requests.append(("url", "url"))
+    if getattr(args, "ssh_password_stdin", False):
+        requests.append(("ssh_password", "ssh-password"))
+
+    if not requests:
+        return
+
+    if len(requests) > 1:
+        flags = ", ".join(f"--{label}-stdin" for _, label in requests)
+        raise SystemExit(
+            f"Error: only one of {flags} may be used per invocation "
+            f"(stdin can only feed one secret)."
+        )
+
+    attr, label = requests[0]
+    existing = getattr(args, attr, None)
+    if existing:
+        raise SystemExit(
+            f"Error: --{label} and --{label}-stdin are mutually exclusive."
+        )
+
+    try:
+        value = read_secret_from_stdin(label=label)
+    except StdinSecretError as exc:
+        raise SystemExit(f"Error: {exc}")
+
+    setattr(args, attr, value)
+
+
 def _resolve_startup_log_path(argv: list[str]) -> Path | None:
     env_profile = os.environ.get("SQLIT_PROFILE_STARTUP") == "1"
     env_exit = os.environ.get("SQLIT_PROFILE_STARTUP_EXIT") == "1"
@@ -255,7 +376,12 @@ def _exec_restart(argv: list[str]) -> None:
         os.execvp(exe, argv)
 
 
-def _build_runtime(args: argparse.Namespace, startup_mark: float) -> RuntimeConfig:
+def _build_runtime(
+    args: argparse.Namespace,
+    startup_mark: float,
+    *,
+    project_dir: Path | None = None,
+) -> RuntimeConfig:
     settings_path = Path(args.settings).expanduser() if args.settings else None
     max_rows = args.max_rows if args.max_rows and args.max_rows > 0 else None
     mock_install = args.mock_install if args.mock_install != "real" else None
@@ -297,6 +423,7 @@ def _build_runtime(args: argparse.Namespace, startup_mark: float) -> RuntimeConf
 
     return RuntimeConfig(
         settings_path=settings_path,
+        project_dir=project_dir,
         theme=getattr(args, "theme", None),
         max_rows=max_rows,
         debug_mode=bool(args.debug),
@@ -328,15 +455,25 @@ def main() -> int:
     )
     log_startup_step("cli_start")
 
+    # Extract positional project-dir before argparse so we can route
+    # connections/history/starred into <project>/.sqlit/.
+    with startup_span("cli_extract_project_dir"):
+        project_dir, filtered_argv = _extract_project_dir(sys.argv)
     # Extract connection URL before argparse (URLs conflict with subcommands)
     with startup_span("cli_extract_connection_url"):
-        connection_url, filtered_argv = _extract_connection_url(sys.argv)
+        connection_url, filtered_argv = _extract_connection_url(filtered_argv)
 
     log_startup_step("cli_parser_start")
     parser = argparse.ArgumentParser(
         prog="sqlit",
         description="A terminal UI for SQL databases",
-        epilog="Connect via URL: sqlit mysql://user:pass@host/db, sqlit sqlite:///path/to/db.sqlite",
+        epilog=(
+            "Connect via URL: sqlit mysql://user:pass@host/db, "
+            "sqlit sqlite:///path/to/db.sqlite\n"
+            "Project mode: sqlit . or sqlit /path/to/project — "
+            "connections, history, and starred queries live in "
+            "<project>/.sqlit/ instead of the global config."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -356,7 +493,16 @@ def main() -> int:
     parser.add_argument("--port", help="Temporary connection port")
     parser.add_argument("--database", help="Temporary connection database name")
     parser.add_argument("--username", help="Temporary connection username")
-    parser.add_argument("--password", help="Temporary connection password")
+    parser.add_argument(
+        "--password",
+        help="Temporary connection password (or use --password-stdin to read from stdin)",
+    )
+    parser.add_argument(
+        "--password-stdin",
+        dest="password_stdin",
+        action="store_true",
+        help="Read the password from stdin (one line, trailing newline stripped)",
+    )
     parser.add_argument("--file-path", help="Temporary connection file path (SQLite/DuckDB)")
     parser.add_argument(
         "--auth-type",
@@ -494,13 +640,22 @@ def main() -> int:
     add_parser.add_argument(
         "--url",
         metavar="URL",
-        help="Connection URL (e.g., postgresql://user:pass@host:5432/db). Requires --name.",
+        help=(
+            "Connection URL (e.g., postgresql://user:pass@host:5432/db). "
+            "Requires --name. Use --url-stdin to read it from stdin instead."
+        ),
+    )
+    add_parser.add_argument(
+        "--url-stdin",
+        dest="url_stdin",
+        action="store_true",
+        help="Read the connection URL from stdin (one line, trailing newline stripped)",
     )
     add_parser.add_argument(
         "--name",
         "-n",
         dest="url_name",
-        help="Connection name (required when using --url)",
+        help="Connection name (required when using --url / --url-stdin)",
     )
     add_provider_parsers = add_parser.add_subparsers(dest="provider", metavar="PROVIDER")
     for db_type in get_supported_db_types():
@@ -513,6 +668,12 @@ def main() -> int:
         add_schema_arguments(provider_parser, schema, include_name=True, name_required=True)
         provider_parser.add_argument("--password-command", dest="password_command", help="Shell command to retrieve the database password")
         provider_parser.add_argument("--ssh-password-command", dest="ssh_password_command", help="Shell command to retrieve the SSH password")
+        _add_stdin_secret_flags(provider_parser, include_ssh=True)
+        provider_parser.add_argument(
+            "--alert",
+            metavar="MODE",
+            help="Per-connection query alert mode: off|delete|write",
+        )
 
     edit_parser = conn_subparsers.add_parser("edit", help="Edit an existing connection")
     edit_parser.add_argument("connection_name", help="Name of connection to edit")
@@ -522,7 +683,11 @@ def main() -> int:
     edit_parser.add_argument("--port", "-P", help="Port")
     edit_parser.add_argument("--database", "-d", help="Database name")
     edit_parser.add_argument("--username", "-u", help="Username")
-    edit_parser.add_argument("--password", "-p", help="Password")
+    edit_parser.add_argument(
+        "--password",
+        "-p",
+        help="Password (or use --password-stdin to read from stdin)",
+    )
     edit_parser.add_argument(
         "--auth-type",
         "-a",
@@ -532,6 +697,12 @@ def main() -> int:
     edit_parser.add_argument("--file-path", help="Database file path (SQLite only)")
     edit_parser.add_argument("--password-command", dest="password_command", help="Shell command to retrieve the database password")
     edit_parser.add_argument("--ssh-password-command", dest="ssh_password_command", help="Shell command to retrieve the SSH password")
+    _add_stdin_secret_flags(edit_parser, include_ssh=True)
+    edit_parser.add_argument(
+        "--alert",
+        metavar="MODE",
+        help="Per-connection query alert mode: off|delete|write|unset (clears the override)",
+    )
 
     delete_parser = conn_subparsers.add_parser("delete", help="Delete a connection")
     delete_parser.add_argument("connection_name", help="Name of connection to delete")
@@ -548,6 +719,12 @@ def main() -> int:
         add_schema_arguments(provider_parser, schema, include_name=True, name_required=False)
         provider_parser.add_argument("--password-command", dest="password_command", help="Shell command to retrieve the database password")
         provider_parser.add_argument("--ssh-password-command", dest="ssh_password_command", help="Shell command to retrieve the SSH password")
+        _add_stdin_secret_flags(provider_parser, include_ssh=True)
+        provider_parser.add_argument(
+            "--alert",
+            metavar="MODE",
+            help="Per-connection query alert mode: off|delete|write",
+        )
 
     query_parser = subparsers.add_parser("query", help="Execute a SQL query")
     query_parser.add_argument("--connection", "-c", required=True, help="Connection name to use")
@@ -574,14 +751,53 @@ def main() -> int:
     docker_subparsers = docker_parser.add_subparsers(dest="docker_command", help="Docker commands")
     docker_subparsers.add_parser("list", help="List detected database containers")
 
+    # Query alert management
+    alerts_parser = subparsers.add_parser(
+        "alerts",
+        help="Manage query confirmation alert overrides",
+        description=(
+            "Manage query alert overrides. Hierarchy: database > connection > global."
+        ),
+    )
+    alerts_subparsers = alerts_parser.add_subparsers(dest="alerts_command", help="Alert commands")
+    alerts_subparsers.add_parser("list", help="Show global and all configured overrides")
+
+    alerts_set = alerts_subparsers.add_parser("set", help="Set an alert mode at a scope")
+    alerts_set.add_argument("mode", help="off | delete | write")
+    alerts_set.add_argument(
+        "--connection",
+        "-c",
+        help="Target a specific saved connection (omit for global)",
+    )
+    alerts_set.add_argument(
+        "--database",
+        "-d",
+        help="Target a database on the connection (requires --connection)",
+    )
+
+    alerts_unset = alerts_subparsers.add_parser(
+        "unset", help="Clear an alert override (falls back to the next scope)"
+    )
+    alerts_unset.add_argument(
+        "--connection",
+        "-c",
+        help="Connection whose override to clear",
+    )
+    alerts_unset.add_argument(
+        "--database",
+        "-d",
+        help="Database whose override to clear (requires --connection)",
+    )
+
     log_startup_step("cli_parser_end")
 
     with startup_span("cli_parse_args"):
         args = parser.parse_args(filtered_argv[1:])  # Skip program name
+    _resolve_stdin_secrets(args)
     log_startup_step("cli_parse_end")
 
     with startup_span("runtime_build"):
-        runtime = _build_runtime(args, startup_mark)
+        runtime = _build_runtime(args, startup_mark, project_dir=project_dir)
 
     with startup_span("services_build"):
         services = build_app_services(runtime)
@@ -684,6 +900,13 @@ def main() -> int:
             print(f"Error: {exc}")
             return 1
 
+        from sqlit.domains.connections.cli.commands import _apply_alert_option
+
+        alert_error = _apply_alert_option(temp_config, getattr(args, "alert", None))
+        if alert_error:
+            print(f"Error: {alert_error}")
+            return 1
+
         app = SSMSTUI(services=services, startup_connection=temp_config)
         return _run_app(app)
 
@@ -711,6 +934,22 @@ def main() -> int:
         else:
             docker_parser.print_help()
             return 1
+
+    if args.command == "alerts":
+        from sqlit.domains.query.cli.alerts_commands import (
+            cmd_alerts_list,
+            cmd_alerts_set,
+            cmd_alerts_unset,
+        )
+
+        if args.alerts_command == "list":
+            return cmd_alerts_list(args, services=services)
+        if args.alerts_command == "set":
+            return cmd_alerts_set(args, services=services)
+        if args.alerts_command == "unset":
+            return cmd_alerts_unset(args, services=services)
+        alerts_parser.print_help()
+        return 1
 
     parser.print_help()
     return 1

@@ -11,6 +11,7 @@ class QueryInsertModeState(State):
     """Query editor in INSERT mode."""
 
     help_category = "Query Editor (Insert)"
+    keymap_context = "query_insert"
 
     def _setup_actions(self) -> None:
         self.allows("exit_insert_mode", label="Normal Mode", help="Exit to NORMAL mode")
@@ -24,12 +25,16 @@ class QueryInsertModeState(State):
         # Undo/redo
         self.allows("undo", help="Undo")
         self.allows("redo", help="Redo")
+        # enter_command_mode is forbidden so ":" reaches the text area when
+        # the user is typing a SQL literal — the action router would otherwise
+        # re-dispatch the keymap entry and start command mode.
         self.forbids(
             "focus_explorer",
             "focus_results",
             "leader_key",
             "new_connection",
             "show_help",
+            "enter_command_mode",
         )
 
     def get_display_bindings(self, app: InputContext) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
