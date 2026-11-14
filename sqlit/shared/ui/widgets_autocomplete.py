@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import rich.markup
 from textual.containers import VerticalScroll
 from textual.message import Message
 from textual.widgets import Static
+
+from sqlit.shared.core.utils import fuzzy_match, highlight_matches
 
 
 class AutocompleteItem(Static):
@@ -141,7 +144,11 @@ class AutocompleteDropdown(VerticalScroll):
 
         # Create item widgets
         for i, item in enumerate(self.filtered_items):
-            label = AutocompleteItem(item, i)
+            escaped_item = rich.markup.escape(item)
+            if self.filter_text:
+                _, indices = fuzzy_match(self.filter_text, item)
+                escaped_item = highlight_matches(escaped_item, indices, style="bold yellow")
+            label = AutocompleteItem(escaped_item, i)
             if i == self.selected_index:
                 label.add_class("selected")
             self.mount(label)
