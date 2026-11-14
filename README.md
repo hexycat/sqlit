@@ -30,6 +30,13 @@
 
 Changes made in this fork relative to the [upstream repository](https://github.com/Maxteabag/sqlit):
 
+- Added an action to focus the query editor directly in INSERT mode. It is
+  unbound by default and can be assigned a custom keybinding.
+- Show fuzzy-matched autocomplete suggestions and highlight matching characters.
+- Increased the maximum autocomplete dropdown width from 80 to 160 columns.
+- Added `Shift+Enter` to execute the statement at the cursor in NORMAL or
+  INSERT mode.
+- Display the Shift modifier as `⇧` in keybinding hints.
 <!-- Add changes below as they are made -->
 
 ---
