@@ -39,6 +39,8 @@ def format_key(key: str) -> str:
         return KEY_DISPLAY_OVERRIDES[key]
     if key.startswith("ctrl+"):
         return f"^{key.split('+', 1)[1]}"
+    if key.startswith("shift+"):
+        return f"⇧{key.split('+', 1)[1]}"
     return key
 
 
@@ -390,6 +392,7 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("o", "open_line_below", "query_normal"),
             ActionKeyDef("O", "open_line_above", "query_normal"),
             ActionKeyDef("enter", "execute_query", "query_normal"),
+            ActionKeyDef("shift+enter", "execute_single_statement", "query_normal"),
             ActionKeyDef("p", "paste", "query_normal"),
             ActionKeyDef("y", "yank_leader_key", "query_normal"),
             ActionKeyDef("c", "change_leader_key", "query_normal"),
@@ -478,6 +481,7 @@ class DefaultKeymapProvider(KeymapProvider):
             # Query (insert mode)
             ActionKeyDef("escape", "exit_insert_mode", "query_insert"),
             ActionKeyDef("ctrl+enter", "execute_query_insert", "query_insert"),
+            ActionKeyDef("shift+enter", "execute_single_statement", "query_insert"),
             # autocomplete_accept lives in the 'autocomplete' context below;
             # the query_insert context still acquires it implicitly when the
             # dropdown is visible.

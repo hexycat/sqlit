@@ -16,6 +16,7 @@ class QueryInsertModeState(State):
     def _setup_actions(self) -> None:
         self.allows("exit_insert_mode", label="Normal Mode", help="Exit to NORMAL mode")
         self.allows("execute_query_insert", label="Execute", help="Execute query (stay INSERT)")
+        self.allows("execute_single_statement", label="Run Statement", help="Execute statement at cursor")
         self.allows("autocomplete_accept", help="Accept autocomplete")
         self.allows("quit")
         # Clipboard actions
@@ -49,6 +50,11 @@ class QueryInsertModeState(State):
                 key=execute_key,
                 label="Execute",
                 action="execute_query_insert",
+            ),
+            DisplayBinding(
+                key=resolve_display_key("execute_single_statement") or "undefined",
+                label="Execute statement",
+                action="execute_single_statement",
             ),
             DisplayBinding(
                 key=resolve_display_key("autocomplete_accept") or "tab",
