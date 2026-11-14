@@ -15,6 +15,7 @@ class MainScreenState(State):
     def _setup_actions(self) -> None:
         self.allows("focus_explorer", help="Focus Explorer")
         self.allows("focus_query", help="Focus Query")
+        self.allows("focus_query_insert", help="Focus Query (INSERT mode)")
         self.allows("focus_results", help="Focus Results")
         self.allows("show_connection_picker")
         self.allows("disconnect", guard=lambda app: app.has_connection)
