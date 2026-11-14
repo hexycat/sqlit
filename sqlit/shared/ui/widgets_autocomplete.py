@@ -81,10 +81,7 @@ class AutocompleteDropdown(VerticalScroll):
         self.items = items
         self.filter_text = filter_text.lower()
 
-        if self.filter_text:
-            self.filtered_items = [item for item in items if item.lower().startswith(self.filter_text)]
-        else:
-            self.filtered_items = items[:50]  # Show more items with scrolling
+        self.filtered_items = items[:50]
 
         self.selected_index = 0
         self._rebuild()
