@@ -34,7 +34,7 @@ class AutocompleteDropdown(VerticalScroll):
     """Dropdown widget for SQL autocomplete suggestions with scrollbar."""
 
     MIN_WIDTH = 25
-    MAX_WIDTH = 80
+    MAX_WIDTH = 160
     MAX_HEIGHT = 12
     VERTICAL_SCROLLBAR_SIZE = 1
     DEFAULT_CSS = f"""
