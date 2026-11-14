@@ -104,6 +104,14 @@ class QueryNormalModeState(State):
             )
         )
         seen.add("execute_query")
+        left.append(
+            DisplayBinding(
+                key=resolve_display_key("execute_single_statement") or "undefined",
+                label="Execute statement",
+                action="execute_single_statement",
+            )
+        )
+        seen.add("execute_single_statement")
 
         left.append(
             DisplayBinding(

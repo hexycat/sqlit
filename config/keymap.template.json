@@ -67,6 +67,7 @@
         "open_line_below": "o",
         "open_line_above": "O",
         "execute_query": "enter",
+        "execute_single_statement": "shift+enter",
         "paste": "p",
         "yank_leader_key": "y",
         "change_leader_key": "c",
@@ -104,6 +105,7 @@
       "query_insert": {
         "exit_insert_mode": "escape",
         "execute_query_insert": "ctrl+enter",
+        "execute_single_statement": "shift+enter",
         "select_all": "ctrl+a",
         "copy_selection": "ctrl+c",
         "paste": "ctrl+v"
