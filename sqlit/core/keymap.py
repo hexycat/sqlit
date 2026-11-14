@@ -484,6 +484,7 @@ class DefaultKeymapProvider(KeymapProvider):
             # Navigation
             ActionKeyDef("e", "focus_explorer", "navigation"),
             ActionKeyDef("q", "focus_query", "navigation"),
+            ActionKeyDef("", "focus_query_insert", "navigation"),
             ActionKeyDef("r", "focus_results", "navigation"),
             # Query (autocomplete)
             ActionKeyDef("ctrl+j", "autocomplete_next", "autocomplete"),

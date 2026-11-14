@@ -15,6 +15,7 @@
       "navigation": {
         "focus_explorer": "e",
         "focus_query": "q",
+        "focus_query_insert": null,
         "focus_results": "r"
       },
       "tree": {

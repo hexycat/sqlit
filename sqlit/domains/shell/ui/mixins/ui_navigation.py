@@ -62,6 +62,19 @@ class UINavigationMixin(UIStatusMixin, UILeaderMixin):
         self.query_input.focus()
         self._update_vim_mode_visuals()
 
+    def action_focus_query_insert(self: UINavigationMixinHost) -> None:
+        """Focus the Query pane (in INSERT mode)."""
+        from sqlit.core.vim import VimMode
+
+        self._clear_count_buffer()  # Clear any pending count prefix
+        if self._fullscreen_mode != "none":
+            self._set_fullscreen_mode("none")
+        self.vim_mode = VimMode.INSERT
+        self.query_input.read_only = False
+        self.query_input.focus()
+        self._update_vim_mode_visuals()
+        self._update_footer_bindings()
+
     def action_focus_results(self: UINavigationMixinHost) -> None:
         """Focus the Results pane."""
         self._clear_count_buffer()  # Clear any pending count prefix
